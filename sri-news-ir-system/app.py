@@ -130,4 +130,52 @@ if st.button("Buscar"):
 
     # ----- TF-IDF -----
     st.subheader("TF-IDF")
-    st.write("Precision@5:", precision_at_k(score
+    st.write("Precision@5:", precision_at_k(scores_top_tfidf, relevance, k=5))
+    st.write("Recall@5:", recall_at_k(scores_top_tfidf, relevance, k=5))
+    st.write("Average Precision:", average_precision(all_scores_tfidf, relevance))
+
+    cm_tfidf = sri_confusion_matrix(all_scores_tfidf, relevance)
+    st.write("Matriz de Confusión (TF-IDF):")
+    st.write(cm_tfidf)
+
+    # ----- BM25 -----
+    st.subheader("BM25")
+    st.write("Precision@5:", precision_at_k(scores_top_bm25, relevance, k=5))
+    st.write("Recall@5:", recall_at_k(scores_top_bm25, relevance, k=5))
+    st.write("Average Precision:", average_precision(all_scores_bm25, relevance))
+
+    cm_bm25 = sri_confusion_matrix(all_scores_bm25, relevance)
+    st.write("Matriz de Confusión (BM25):")
+    st.write(cm_bm25)
+
+    # ====================================================
+    # 6. COMPARACIÓN FINAL
+    # ====================================================
+    st.header("📈 Comparación Final TF-IDF vs BM25")
+
+    comparison = pd.DataFrame({
+        "Métrica": ["Precision@5", "Recall@5", "Average Precision"],
+        "TF-IDF": [
+            precision_at_k(scores_top_tfidf, relevance, k=5),
+            recall_at_k(scores_top_tfidf, relevance, k=5),
+            average_precision(all_scores_tfidf, relevance)
+        ],
+        "BM25": [
+            precision_at_k(scores_top_bm25, relevance, k=5),
+            recall_at_k(scores_top_bm25, relevance, k=5),
+            average_precision(all_scores_bm25, relevance)
+        ]
+    })
+
+    st.dataframe(comparison)
+
+
+    # ====================================================
+    # 7. CONCLUSIÓN AUTOMÁTICA
+    # ====================================================
+    st.header("🧠 Conclusión Automática")
+
+    if comparison["TF-IDF"].sum() > comparison["BM25"].sum():
+        st.success("➡️ **TF-IDF es superior para esta consulta.**")
+    else:
+        st.success("➡️ **BM25 es superior para esta consulta.**")
