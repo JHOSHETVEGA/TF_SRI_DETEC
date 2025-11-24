@@ -154,26 +154,25 @@ if st.button("Buscar"):
     # ================================
     st.header("📊 Métricas del SRI")
 
-    relevance = np.ones(len(real_corpus))
-
-    # ---- TF-IDF Metrics ----
+    relevance = np.ones(len(real_corpus))   # todas las noticias reales son relevantes
+    
+    # ---- TF-IDF ----
     st.subheader("TF-IDF")
     st.write("Precision@5:", precision_at_k(scores_tfidf, relevance, k=5))
     st.write("Recall@5:", recall_at_k(scores_tfidf, relevance, k=5))
-    st.write("Average Precision:", average_precision(scores_tfidf))
+    st.write("Average Precision:", average_precision(scores_tfidf, relevance))
     cm_tfidf = sri_confusion_matrix(scores_tfidf, relevance)
     st.write("Matriz de Confusión (TF-IDF):")
     st.write(cm_tfidf)
-
-    # ---- BM25 Metrics ----
+    
+    # ---- BM25 ----
     st.subheader("BM25")
     st.write("Precision@5:", precision_at_k(scores_bm25, relevance, k=5))
     st.write("Recall@5:", recall_at_k(scores_bm25, relevance, k=5))
-    st.write("Average Precision:", average_precision(scores_bm25))
+    st.write("Average Precision:", average_precision(scores_bm25, relevance))
     cm_bm25 = sri_confusion_matrix(scores_bm25, relevance)
     st.write("Matriz de Confusión (BM25):")
     st.write(cm_bm25)
-
     # ================================
     # COMPARACIÓN FINAL
     # ================================
