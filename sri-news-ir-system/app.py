@@ -2,7 +2,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-# Backend modules
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+
+# Backend modules (ajústalos a como los tengas creados)
 from backend.model_training import train_truth_model
 from backend.indexing import build_tfidf_index, build_bm25_index
 from backend.searching import search_tfidf, search_bm25
@@ -16,7 +18,7 @@ from backend.metrics import (
 st.title("📰 Clasificación REAL/FAKE + Sistema de Recuperación de Información (TF-IDF & BM25)")
 st.write(
     "Aplicación que primero entrena un modelo para clasificar noticias como reales o falsas "
-    "y luego construye un Sistema de Recuperación de Información (SRI) sobre TODO el Test.csv "
+    "y luego construye un Sistema de Recuperación de Información sobre TODO el Test.csv "
     "usando TF-IDF y BM25."
 )
 
@@ -37,19 +39,12 @@ train = pd.read_csv(train_file)
 val   = pd.read_csv(val_file)
 test  = pd.read_csv(test_file)
 
-# Aseguramos tipos correctos
+# Aseguramos que la columna de texto se llame 'tweet' y sea string
 train["tweet"] = train["tweet"].astype(str)
 val["tweet"]   = val["tweet"].astype(str)
 test["tweet"]  = test["tweet"].astype(str)
 
-# Mapeo de etiquetas para TODO el dataset (0 = fake, 1 = real)
-label_mapping = {"fake": 0, "real": 1}
-for df in (train, val):
-    df["label_bin"] = df["label"].str.lower().map(label_mapping)
-    df["label_bin"] = df["label_bin"].fillna(0).astype(int)
-
-st.success("Archivos cargados y etiquetas mapeadas (fake=0, real=1).")
-
+st.success("Archivos cargados correctamente.")
 
 # =========================================================
 # 2. ENTRENAR MODELO REAL/FAKE
@@ -57,10 +52,14 @@ st.success("Archivos cargados y etiquetas mapeadas (fake=0, real=1).")
 st.header("2. Entrenar modelo de clasificación (REAL vs FAKE)")
 
 if st.button("Entrenar modelo Naive Bayes"):
-    # Usamos la función modular que limpia y entrena
+    # train_truth_model se encarga de:
+    # - limpiar texto
+    # - mapear label: fake->0, real->1
+    # - entrenar Naive Bayes
     model, vectorizer, metrics = train_truth_model(train, val)
 
     st.success("✅ Modelo entrenado correctamente sobre Train/Val.")
+
     st.write("### Accuracy (Validación)")
     st.write(metrics["accuracy"])
 
@@ -70,54 +69,47 @@ if st.button("Entrenar modelo Naive Bayes"):
     st.write("### Reporte de Clasificación (Validación)")
     st.text(metrics["report"])
 
-    # Guardamos en sesión
+    # Guardamos modelo y vectorizador en sesión
     st.session_state.model = model
     st.session_state.vectorizer = vectorizer
 
-    # Evaluación adicional en Test
+    # ================== PREDICCIÓN EN TEST ==================
+    # OJO: Test.csv NO tiene label, solo 'tweet'
     X_test = vectorizer.transform(test["tweet"])
-    preds_test = model.predict(X_test)
+    preds_test = model.predict(X_test)          # 0 = fake, 1 = real
 
-    from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+    test_pred = test.copy()
+    test_pred["pred_label"] = preds_test
+    test_pred["pred_label_text"] = test_pred["pred_label"].map({0: "fake", 1: "real"})
 
-    test["predicted_label"] = test_preds
-    test["predicted_label_text"] = test_preds.map({0: "fake", 1: "real"})
+    st.write("### Muestra de predicciones en Test.csv")
+    st.dataframe(test_pred.head(20))
 
-    st.write("### Predicciones para el Test.csv")
-    st.dataframe(test.head(20))
+    # Guardamos el test con predicciones para usarlo en el SRI
+    st.session_state.test_df = test_pred
 
-    st.write("### Accuracy (Test)")
-    st.write(acc_test)
-
-    st.write("### Matriz de Confusión (Test)")
-    st.write(cm_test)
-
-    st.write("### Reporte de Clasificación (Test)")
-    st.text(rep_test)
-
-
-if "model" not in st.session_state:
-    st.warning("Entrena primero el modelo para continuar (sección 2).")
-else:
-    st.info("Modelo cargado en memoria. Puedes continuar con el SRI.")
+# Si aún no hay modelo, no seguimos al SRI
+if "model" not in st.session_state or "test_df" not in st.session_state:
+    st.warning("Entrena primero el modelo (sección 2) para generar predicciones en Test.")
+    st.stop()
 
 # =========================================================
 # 3. PREPARAR CORPUS COMPLETO DEL SRI
 # =========================================================
 st.header("3. Preparar el corpus para el SRI (sin filtrar)")
 
-# Usamos TODO el Test.csv como corpus de documentos del SRI
-corpus_df = test.copy()   # DataFrame completo
-corpus_df = corpus_df.reset_index(drop=True)
+corpus_df = st.session_state.test_df.copy().reset_index(drop=True)
 
 st.write(f"El corpus del SRI contiene **{len(corpus_df)}** documentos (todas las noticias del Test).")
+
+# Para el SRI, definimos relevancia:
+# relevante = noticia predicha como REAL por el modelo (pred_label = 1)
+relevance = corpus_df["pred_label"].values.astype(int)
+
+st.write(f"Noticias predichas como REAL (relevantes): {relevance.sum()} / {len(relevance)}")
+
 st.session_state.corpus_df = corpus_df
-
-# Relevancia para el SRI:
-# Definimos que una noticia es relevante si es REAL (label_bin = 1)
-relevance = corpus_df["label_bin"].values
-st.write(f"Noticias REAL (relevantes) en el corpus: {relevance.sum()} / {len(relevance)}")
-
+st.session_state.relevance = relevance
 
 # =========================================================
 # 4. CONSTRUIR ÍNDICES TF-IDF Y BM25 SOBRE TODO EL TEST
@@ -126,6 +118,7 @@ st.header("4. Construir índices de Recuperación de Información (TF-IDF y BM25
 
 if st.button("Construir índices SRI"):
     try:
+        # Estas funciones deben usar la columna 'tweet' internamente
         tfidf, tfidf_matrix = build_tfidf_index(corpus_df)
         bm25, tokens        = build_bm25_index(corpus_df)
 
@@ -142,17 +135,16 @@ if "tfidf" not in st.session_state or "bm25" not in st.session_state:
     st.warning("Construye primero los índices del SRI (sección 4) para poder buscar.")
     st.stop()
 
-
 # =========================================================
 # 5. BÚSQUEDA + MÉTRICAS + COMPARACIÓN FINAL
 # =========================================================
 st.header("5. Buscar en el SRI (TF-IDF vs BM25)")
 
-query = st.text_input("Escribe tu consulta (por ejemplo: 'covid deaths reported states'): ")
+query = st.text_input("Escribe tu consulta (por ejemplo: 'covid deaths reported in states'): ")
 
 if st.button("Buscar"):
     corpus_df = st.session_state.corpus_df
-    relevance = corpus_df["label_bin"].values  # 1 = real, 0 = fake
+    relevance = st.session_state.relevance  # 1 = real, 0 = fake
 
     # ==============================================
     # 5.1 Resultados TF-IDF (Top-K)
@@ -168,7 +160,6 @@ if st.button("Buscar"):
     st.subheader("🔹 Resultados TF-IDF (Top 5)")
     st.dataframe(results_tfidf)
 
-
     # ==============================================
     # 5.2 Resultados BM25 (Top-K)
     # ==============================================
@@ -182,11 +173,10 @@ if st.button("Buscar"):
     st.subheader("🔸 Resultados BM25 (Top 5)")
     st.dataframe(results_bm25)
 
-
     # ==============================================
-    # 5.3 Cálculo de scores completos para métricas
+    # 5.3 Scores completos para métricas
     # ==============================================
-    st.header("📊 Métricas del SRI (usando REAL como relevantes)")
+    st.header("📊 Métricas del SRI (usando 'REAL' como relevantes)")
 
     # Scores completos TF-IDF para TODOS los documentos
     query_vec = st.session_state.tfidf.transform([query])
@@ -196,10 +186,8 @@ if st.button("Buscar"):
     query_tokens = query.split()
     all_scores_bm25 = st.session_state.bm25.get_scores(query_tokens)
 
-
     # -------- Métricas TF-IDF --------
     st.subheader("TF-IDF")
-
     st.write("Precision@5:", precision_at_k(all_scores_tfidf, relevance, k=5))
     st.write("Recall@5:",    recall_at_k(all_scores_tfidf, relevance, k=5))
     st.write("Average Precision (AP):", average_precision(all_scores_tfidf, relevance))
@@ -208,10 +196,8 @@ if st.button("Buscar"):
     st.write("Matriz de Confusión (TF-IDF):")
     st.write(cm_tfidf)
 
-
     # -------- Métricas BM25 --------
     st.subheader("BM25")
-
     st.write("Precision@5:", precision_at_k(all_scores_bm25, relevance, k=5))
     st.write("Recall@5:",    recall_at_k(all_scores_bm25, relevance, k=5))
     st.write("Average Precision (AP):", average_precision(all_scores_bm25, relevance))
@@ -219,7 +205,6 @@ if st.button("Buscar"):
     cm_bm25 = sri_confusion_matrix(all_scores_bm25, relevance)
     st.write("Matriz de Confusión (BM25):")
     st.write(cm_bm25)
-
 
     # ==============================================
     # 5.4 COMPARACIÓN FINAL TF-IDF vs BM25
@@ -241,7 +226,6 @@ if st.button("Buscar"):
     })
 
     st.dataframe(comparison_df)
-
 
     # ==============================================
     # 5.5 CONCLUSIÓN AUTOMÁTICA
