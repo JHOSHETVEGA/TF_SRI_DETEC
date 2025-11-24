@@ -59,7 +59,6 @@ if st.button("Entrenar modelo"):
     st.session_state.vectorizer = vectorizer
 
 
-# Esperar modelo
 if "model" not in st.session_state:
     st.warning("Primero entrena el modelo.")
     st.stop()
@@ -83,7 +82,6 @@ if st.button("Detectar noticias reales"):
     st.session_state.real_corpus = real_corpus
 
 
-# Esperar corpus limpio
 if "real_corpus" not in st.session_state:
     st.warning("Primero detecta noticias reales.")
     st.stop()
@@ -115,7 +113,7 @@ if "tfidf" not in st.session_state or "bm25" not in st.session_state:
 
 
 # =========================================================
-# 5. BUSCAR EN EL SRI + MÉTRICAS + COMPARACIÓN FINAL
+# 5. BÚSQUEDA + MÉTRICAS + COMPARACIÓN FINAL
 # =========================================================
 st.header("5. Buscar en el Sistema de Recuperación de Información")
 
@@ -124,9 +122,9 @@ query = st.text_input("Escribe tu consulta:")
 if st.button("Buscar"):
     real_corpus = st.session_state.real_corpus
 
-    # ================================
-    # TF-IDF
-    # ================================
+    # ==============================================
+    # 5.1 Resultados TF-IDF
+    # ==============================================
     results_tfidf, scores_tfidf = search_tfidf(
         query,
         st.session_state.tfidf,
@@ -137,9 +135,10 @@ if st.button("Buscar"):
     st.subheader("Resultados TF-IDF")
     st.dataframe(results_tfidf)
 
-    # ================================
-    # BM25
-    # ================================
+
+    # ==============================================
+    # 5.2 Resultados BM25
+    # ==============================================
     results_bm25, scores_bm25 = search_bm25(
         query,
         st.session_state.bm25,
@@ -149,33 +148,44 @@ if st.button("Buscar"):
     st.subheader("Resultados BM25")
     st.dataframe(results_bm25)
 
-    # ================================
-    # MÉTRICAS SRI
-    # ================================
+
+    # ==============================================
+    # 5.3 MÉTRICAS DEL SRI
+    # ==============================================
     st.header("📊 Métricas del SRI")
 
-    relevance = np.ones(len(real_corpus))   # todas las noticias reales son relevantes
-    
-    # ---- TF-IDF ----
+    relevance = np.ones(len(real_corpus))  # todas reales en el corpus
+
+    # Scores completos para matriz de confusión
+    all_scores_tfidf = (st.session_state.tfidf_matrix @ st.session_state.tfidf.transform([query]).T).toarray().flatten()
+    all_scores_bm25 = st.session_state.bm25.get_scores(query.split())
+
+
+    # -------- TF-IDF --------
     st.subheader("TF-IDF")
     st.write("Precision@5:", precision_at_k(scores_tfidf, relevance, k=5))
     st.write("Recall@5:", recall_at_k(scores_tfidf, relevance, k=5))
-    st.write("Average Precision:", average_precision(scores_tfidf, relevance))
-    cm_tfidf = sri_confusion_matrix(scores_tfidf, relevance)
+    st.write("Average Precision:", average_precision(all_scores_tfidf, relevance))
+
+    cm_tfidf = sri_confusion_matrix(all_scores_tfidf, relevance)
     st.write("Matriz de Confusión (TF-IDF):")
     st.write(cm_tfidf)
-    
-    # ---- BM25 ----
+
+
+    # -------- BM25 --------
     st.subheader("BM25")
     st.write("Precision@5:", precision_at_k(scores_bm25, relevance, k=5))
     st.write("Recall@5:", recall_at_k(scores_bm25, relevance, k=5))
-    st.write("Average Precision:", average_precision(scores_bm25, relevance))
-    cm_bm25 = sri_confusion_matrix(scores_bm25, relevance)
+    st.write("Average Precision:", average_precision(all_scores_bm25, relevance))
+
+    cm_bm25 = sri_confusion_matrix(all_scores_bm25, relevance)
     st.write("Matriz de Confusión (BM25):")
     st.write(cm_bm25)
-    # ================================
-    # COMPARACIÓN FINAL
-    # ================================
+
+
+    # ==============================================
+    # 5.4 COMPARACIÓN FINAL
+    # ==============================================
     st.header("📈 Comparación Final TF-IDF vs BM25")
 
     comparison_df = pd.DataFrame({
@@ -183,18 +193,21 @@ if st.button("Buscar"):
         "TF-IDF": [
             precision_at_k(scores_tfidf, relevance),
             recall_at_k(scores_tfidf, relevance),
-            average_precision(scores_tfidf)
+            average_precision(all_scores_tfidf, relevance)
         ],
         "BM25": [
             precision_at_k(scores_bm25, relevance),
             recall_at_k(scores_bm25, relevance),
-            average_precision(scores_bm25)
+            average_precision(all_scores_bm25, relevance)
         ]
     })
 
     st.dataframe(comparison_df)
 
-    # Conclusión automática
+
+    # ==============================================
+    # 5.5 CONCLUSIÓN AUTOMÁTICA
+    # ==============================================
     st.subheader("🧠 Conclusión Automática")
 
     p_diff = comparison_df.loc[0, "TF-IDF"] - comparison_df.loc[0, "BM25"]
@@ -214,9 +227,13 @@ if st.button("Buscar"):
         conclusion += f"- BM25 tiene mayor Recall@5 (por {abs(r_diff):.4f})\n"
 
     if ap_diff > 0:
-        conclusion += f"- TF-IDF tiene mejor Average Precision.\n"
+        conclusion += "- TF-IDF obtiene mejor Average Precision.\n"
     else:
-        conclusion += f"- BM25 tiene mejor Average Precision.\n"
+        conclusion += "- BM25 obtiene mejor Average Precision.\n"
 
     if (p_diff + r_diff + ap_diff) > 0:
-        conclusion += "\n➡️ **TF-IDF es superior globalmente para**"
+        conclusion += "\n➡️ **TF-IDF es superior globalmente para esta consulta.**"
+    else:
+        conclusion += "\n➡️ **BM25 es superior globalmente para esta consulta.**"
+
+    st.write(conclusion)
