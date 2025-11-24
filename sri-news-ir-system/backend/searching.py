@@ -6,8 +6,9 @@ def search_tfidf(query, tfidf, tfidf_matrix, corpus, top_k=5):
     top_idx = np.argsort(scores)[::-1][:top_k]
     return corpus.iloc[top_idx], scores[top_idx]
 
+
 def search_bm25(query, bm25, corpus, top_k=5):
-    query_tokens = query.split()
-    scores = bm25.get_scores(query_tokens)
+    tokens = query.split()
+    scores = bm25.get_scores(tokens)
     top_idx = np.argsort(scores)[::-1][:top_k]
     return corpus.iloc[top_idx], scores[top_idx]
