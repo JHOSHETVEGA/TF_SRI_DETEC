@@ -80,9 +80,11 @@ if st.button("Entrenar modelo Naive Bayes"):
 
     from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 
-    acc_test = accuracy_score(test["label_bin"], preds_test)
-    cm_test  = confusion_matrix(test["label_bin"], preds_test)
-    rep_test = classification_report(test["label_bin"], preds_test)
+    test["predicted_label"] = test_preds
+    test["predicted_label_text"] = test_preds.map({0: "fake", 1: "real"})
+
+    st.write("### Predicciones para el Test.csv")
+    st.dataframe(test.head(20))
 
     st.write("### Accuracy (Test)")
     st.write(acc_test)
