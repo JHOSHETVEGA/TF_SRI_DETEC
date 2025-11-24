@@ -220,4 +220,4 @@ if st.button("Buscar"):
         conclusion += f"- BM25 tiene mejor Average Precision.\n"
 
     if (p_diff + r_diff + ap_diff) > 0:
-        conclusion += "\n➡️ **TF-IDF es superior globalmente para**
+        conclusion += "\n➡️ **TF-IDF es superior globalmente para**"
