@@ -2,238 +2,132 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-# Backend modules
-from backend.model_training import train_truth_model
-from backend.filtering import filter_real_news
 from backend.indexing import build_tfidf_index, build_bm25_index
 from backend.searching import search_tfidf, search_bm25
 from backend.metrics import (
     precision_at_k, recall_at_k, average_precision, sri_confusion_matrix
 )
 
+from sentence_transformers import SentenceTransformer, util
+
 
 # =========================================================
 # TÍTULO
 # =========================================================
-st.title("📰 Sistema de Recuperación de Información con Noticias Reales (TF-IDF & BM25)")
-st.write("Procesa tus datasets, detecta noticias reales, genera índices y prueba tu SRI con consultas.")
+st.title("📰 Sistema de Recuperación de Información (TF-IDF vs BM25)")
+st.write("SRI completo utilizando TODO el corpus, sin filtrar noticias verdaderas.")
 
 
 # =========================================================
-# 1. SUBIDA DE ARCHIVOS
+# 1. SUBIR ARCHIVOS
 # =========================================================
-st.header("1. Subir archivos CSV")
+st.header("1. Subir archivo Test.csv")
 
-train_file = st.file_uploader("Train.csv", type="csv")
-val_file   = st.file_uploader("Val.csv", type="csv")
-test_file  = st.file_uploader("Test.csv", type="csv")
+test_file = st.file_uploader("Sube tu Test.csv aquí:", type="csv")
 
-if not (train_file and val_file and test_file):
-    st.info("Sube los tres archivos para continuar.")
+if not test_file:
+    st.info("Sube el archivo Test.csv para continuar.")
     st.stop()
 
-train = pd.read_csv(train_file)
-val   = pd.read_csv(val_file)
-test  = pd.read_csv(test_file)
+test = pd.read_csv(test_file)
+corpus = test["tweet"].tolist()
+
+st.success(f"Corpus cargado correctamente: {len(corpus)} documentos.")
 
 
 # =========================================================
-# 2. ENTRENAR MODELO REAL/FAKE
+# 2. CONSTRUIR ÍNDICES COMPLETOS
 # =========================================================
-st.header("2. Entrenar modelo de clasificación (REAL vs FAKE)")
-
-if st.button("Entrenar modelo"):
-    model, vectorizer, metrics = train_truth_model(train, val)
-
-    st.success("Modelo entrenado correctamente.")
-    st.write("### Accuracy")
-    st.write(metrics["accuracy"])
-
-    st.write("### Matriz de Confusión")
-    st.write(metrics["confusion"])
-
-    st.write("### Reporte de Clasificación")
-    st.text(metrics["report"])
-
-    st.session_state.model = model
-    st.session_state.vectorizer = vectorizer
-
-
-if "model" not in st.session_state:
-    st.warning("Primero entrena el modelo.")
-    st.stop()
-
-
-# =========================================================
-# 3. FILTRAR NOTICIAS REALES
-# =========================================================
-st.header("3. Filtrar noticias reales del Test")
-
-if st.button("Detectar noticias reales"):
-    real_corpus = filter_real_news(
-        st.session_state.model,
-        st.session_state.vectorizer,
-        test
-    )
-
-    st.success(f"Noticias reales detectadas: {len(real_corpus)}")
-    st.dataframe(real_corpus.head())
-
-    st.session_state.real_corpus = real_corpus
-
-
-if "real_corpus" not in st.session_state:
-    st.warning("Primero detecta noticias reales.")
-    st.stop()
-
-
-# =========================================================
-# 4. CONSTRUIR ÍNDICES SRI
-# =========================================================
-st.header("4. Construir índices (TF-IDF y BM25)")
+st.header("2. Construir índices (TF-IDF y BM25)")
 
 if st.button("Construir índices"):
     try:
-        tfidf, tfidf_matrix = build_tfidf_index(st.session_state.real_corpus)
-        bm25, tokens = build_bm25_index(st.session_state.real_corpus)
+        tfidf, tfidf_matrix = build_tfidf_index(corpus)
+        bm25, tokenized = build_bm25_index(corpus)
 
         st.session_state.tfidf = tfidf
         st.session_state.tfidf_matrix = tfidf_matrix
         st.session_state.bm25 = bm25
+        st.session_state.corpus = corpus
 
-        st.success("Índices creados correctamente.")
+        st.success("Índices construidos correctamente.")
+
     except Exception as e:
-        st.error("Error al construir índices.")
+        st.error("Error construyendo los índices.")
         st.text(str(e))
 
 
-if "tfidf" not in st.session_state or "bm25" not in st.session_state:
-    st.warning("Primero construye los índices TF-IDF y BM25.")
+if "tfidf" not in st.session_state:
+    st.warning("Primero construye los índices.")
     st.stop()
 
 
 # =========================================================
-# 5. BÚSQUEDA + MÉTRICAS + COMPARACIÓN FINAL
+# 3. RELEVANCIA AUTOMÁTICA CON EMBEDDINGS
 # =========================================================
-st.header("5. Buscar en el Sistema de Recuperación de Información")
+st.header("3. Buscar con SRI + Relevancia Automática")
 
 query = st.text_input("Escribe tu consulta:")
 
 if st.button("Buscar"):
-    real_corpus = st.session_state.real_corpus
+    corpus = st.session_state.corpus
 
-    # ==============================================
-    # 5.1 Resultados TF-IDF
-    # ==============================================
-    results_tfidf, scores_tfidf = search_tfidf(
+    # ======================================
+    # A) RANKING TF-IDF
+    # ======================================
+    results_tfidf, scores_top_tfidf = search_tfidf(
         query,
         st.session_state.tfidf,
         st.session_state.tfidf_matrix,
-        real_corpus
+        corpus
     )
 
     st.subheader("Resultados TF-IDF")
     st.dataframe(results_tfidf)
 
 
-    # ==============================================
-    # 5.2 Resultados BM25
-    # ==============================================
-    results_bm25, scores_bm25 = search_bm25(
+    # ======================================
+    # B) RANKING BM25
+    # ======================================
+    results_bm25, scores_top_bm25 = search_bm25(
         query,
         st.session_state.bm25,
-        real_corpus
+        corpus
     )
 
     st.subheader("Resultados BM25")
     st.dataframe(results_bm25)
 
 
-    # ==============================================
-    # 5.3 MÉTRICAS DEL SRI
-    # ==============================================
+    # ====================================================
+    # 4. GENERAR RELEVANCIA AUTOMÁTICA (GROUND TRUTH)
+    # ====================================================
+    st.subheader("Generando relevancia automática...")
+
+    embedder = SentenceTransformer("all-mpnet-base-v2")
+
+    query_emb = embedder.encode(query)
+    doc_emb = embedder.encode(corpus)
+
+    # similaridad semántica para evaluar relevancia real
+    semantic_scores = util.cos_sim(query_emb, doc_emb)[0].cpu().numpy()
+
+    # documento relevante si su similaridad > threshold
+    threshold = 0.40
+    relevance = (semantic_scores >= threshold).astype(int)
+
+    st.success(f"Documentos relevantes detectados: {relevance.sum()} / {len(relevance)}")
+
+
+    # ====================================================
+    # 5. MÉTRICAS SRI (AHORA SI REALES)
+    # ====================================================
     st.header("📊 Métricas del SRI")
 
-    relevance = np.ones(len(real_corpus))  # todas reales en el corpus
-
-    # Scores completos para matriz de confusión
+    # Scores completos para ranking
     all_scores_tfidf = (st.session_state.tfidf_matrix @ st.session_state.tfidf.transform([query]).T).toarray().flatten()
     all_scores_bm25 = st.session_state.bm25.get_scores(query.split())
 
-
-    # -------- TF-IDF --------
+    # ----- TF-IDF -----
     st.subheader("TF-IDF")
-    st.write("Precision@5:", precision_at_k(scores_tfidf, relevance, k=5))
-    st.write("Recall@5:", recall_at_k(scores_tfidf, relevance, k=5))
-    st.write("Average Precision:", average_precision(all_scores_tfidf, relevance))
-
-    cm_tfidf = sri_confusion_matrix(all_scores_tfidf, relevance)
-    st.write("Matriz de Confusión (TF-IDF):")
-    st.write(cm_tfidf)
-
-
-    # -------- BM25 --------
-    st.subheader("BM25")
-    st.write("Precision@5:", precision_at_k(scores_bm25, relevance, k=5))
-    st.write("Recall@5:", recall_at_k(scores_bm25, relevance, k=5))
-    st.write("Average Precision:", average_precision(all_scores_bm25, relevance))
-
-    cm_bm25 = sri_confusion_matrix(all_scores_bm25, relevance)
-    st.write("Matriz de Confusión (BM25):")
-    st.write(cm_bm25)
-
-
-    # ==============================================
-    # 5.4 COMPARACIÓN FINAL
-    # ==============================================
-    st.header("📈 Comparación Final TF-IDF vs BM25")
-
-    comparison_df = pd.DataFrame({
-        "Métrica": ["Precision@5", "Recall@5", "Average Precision"],
-        "TF-IDF": [
-            precision_at_k(scores_tfidf, relevance),
-            recall_at_k(scores_tfidf, relevance),
-            average_precision(all_scores_tfidf, relevance)
-        ],
-        "BM25": [
-            precision_at_k(scores_bm25, relevance),
-            recall_at_k(scores_bm25, relevance),
-            average_precision(all_scores_bm25, relevance)
-        ]
-    })
-
-    st.dataframe(comparison_df)
-
-
-    # ==============================================
-    # 5.5 CONCLUSIÓN AUTOMÁTICA
-    # ==============================================
-    st.subheader("🧠 Conclusión Automática")
-
-    p_diff = comparison_df.loc[0, "TF-IDF"] - comparison_df.loc[0, "BM25"]
-    r_diff = comparison_df.loc[1, "TF-IDF"] - comparison_df.loc[1, "BM25"]
-    ap_diff = comparison_df.loc[2, "TF-IDF"] - comparison_df.loc[2, "BM25"]
-
-    conclusion = ""
-
-    if p_diff > 0:
-        conclusion += f"- TF-IDF tiene mayor Precision@5 (por {abs(p_diff):.4f})\n"
-    else:
-        conclusion += f"- BM25 tiene mayor Precision@5 (por {abs(p_diff):.4f})\n"
-
-    if r_diff > 0:
-        conclusion += f"- TF-IDF tiene mayor Recall@5 (por {abs(r_diff):.4f})\n"
-    else:
-        conclusion += f"- BM25 tiene mayor Recall@5 (por {abs(r_diff):.4f})\n"
-
-    if ap_diff > 0:
-        conclusion += "- TF-IDF obtiene mejor Average Precision.\n"
-    else:
-        conclusion += "- BM25 obtiene mejor Average Precision.\n"
-
-    if (p_diff + r_diff + ap_diff) > 0:
-        conclusion += "\n➡️ **TF-IDF es superior globalmente para esta consulta.**"
-    else:
-        conclusion += "\n➡️ **BM25 es superior globalmente para esta consulta.**"
-
-    st.write(conclusion)
+    st.write("Precision@5:", precision_at_k(score
