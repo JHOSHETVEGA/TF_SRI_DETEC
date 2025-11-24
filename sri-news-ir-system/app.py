@@ -30,7 +30,7 @@ test  = pd.read_csv(test_file)
 
 mapping = {"FAKE":0, "REAL":1, "fake":0, "real":1}
 for df in [train, val, test]:
-    df["label"] = df["label"].map(mapping)
+    df["label"] = df["tweet"].map(mapping)
 
 
 # --------------------------------------------
