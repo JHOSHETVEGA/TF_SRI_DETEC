@@ -11,9 +11,6 @@ from backend.searching import search_tfidf, search_bm25
 from backend.metrics import precision_at_k, recall_at_k, average_precision
 
 
-# =========================================================
-# MATRIZ 4×4 REAL/FAKE × RELEVANTE/IRRELEVANTE
-# =========================================================
 def sri_confusion_4way(scores, true_labels, threshold=0.0):
     predicted_relevance = (scores > threshold).astype(int)
 
@@ -29,10 +26,8 @@ def sri_confusion_4way(scores, true_labels, threshold=0.0):
     }, index=["Real", "Fake"])
 
 
-# =========================================================
-# TÍTULO
-# =========================================================
-st.title("📰 Clasificación REAL/FAKE + SRI (TF-IDF & BM25) con Matriz 4×4 e Índices")
+
+st.title("📰 Clasificación REAL/FAKE + SRI (TF-IDF & BM25)")
 st.write("Modelo de clasificación + Sistema de Recuperación de Información completo.")
 
 
@@ -145,10 +140,10 @@ if "tfidf" not in st.session_state:
 # =========================================================
 # 4.1 MOSTRAR ÍNDICES CREADOS (TF-IDF & BM25)
 # =========================================================
-st.header("📚 Visualización de Índices")
+st.header(" Visualización de Índices")
 
 # ----- TF-IDF -----
-with st.expander("🔵 Ver índice TF-IDF"):
+with st.expander(" Ver índice TF-IDF"):
     tfidf = st.session_state.tfidf
     tfidf_matrix = st.session_state.tfidf_matrix
 
@@ -166,7 +161,7 @@ with st.expander("🔵 Ver índice TF-IDF"):
 
 
 # ----- BM25 -----
-with st.expander("🟠 Ver índice BM25"):
+with st.expander(" Ver índice BM25"):
 
     bm25 = st.session_state.bm25
     tokens = st.session_state.tokens
@@ -224,7 +219,7 @@ if st.button("Buscar"):
     # =====================================================
     # MÉTRICAS COMPLETAS DEL SRI
     # =====================================================
-    st.header("📊 Métricas del SRI")
+    st.header(" Métricas del SRI")
 
     # Puntajes completos TF-IDF
     query_vec = st.session_state.tfidf.transform([query])
@@ -262,26 +257,4 @@ if st.button("Buscar"):
     st.write(cm4_bm25)
 
 
-    # =====================================================
-    # COMPARACIÓN FINAL TF-IDF vs BM25
-    # =====================================================
-    st.header("📈 Comparación Final")
 
-    tfidf_score = (
-        precision_at_k(all_scores_tfidf, relevance, 5)
-        + recall_at_k(all_scores_tfidf, relevance, 5)
-        + average_precision(all_scores_tfidf, relevance)
-    )
-
-    bm25_score = (
-        precision_at_k(all_scores_bm25, relevance, 5)
-        + recall_at_k(all_scores_bm25, relevance, 5)
-        + average_precision(all_scores_bm25, relevance)
-    )
-
-    if tfidf_score > bm25_score:
-        st.success("➡️ **TF-IDF supera a BM25 para esta consulta.**")
-    elif bm25_score > tfidf_score:
-        st.success("➡️ **BM25 supera a TF-IDF para esta consulta.**")
-    else:
-        st.info("➡️ **Ambos tienen rendimiento equivalente.**")
