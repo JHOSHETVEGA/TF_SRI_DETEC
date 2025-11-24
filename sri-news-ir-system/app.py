@@ -44,7 +44,7 @@ test["tweet"]  = test["tweet"].astype(str)
 
 # Mapeo de etiquetas para TODO el dataset (0 = fake, 1 = real)
 label_mapping = {"fake": 0, "real": 1}
-for df in (train, val, test):
+for df in (train, val):
     df["label_bin"] = df["label"].str.lower().map(label_mapping)
     df["label_bin"] = df["label_bin"].fillna(0).astype(int)
 
